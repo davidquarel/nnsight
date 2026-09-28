@@ -290,6 +290,16 @@ class Envoy:
         copies, and not added to `_children`), so ``__getattr__`` needs no
         alias branch, iteration doesn't double-count, and re-pointing the tree on
         dispatch (`_update`, in place) keeps them valid with no rebuild.
+
+        An alias is also one more path to the module, so ``envoys=`` sees it:
+        a string key there is a path suffix, and the alias path is the spelling
+        a map written once for several architectures would use
+        (``envoys={"self_attn": Heads}`` reaches GPT-2's ``attn`` once
+        ``rename={"attn": "self_attn"}`` has bound it). The class is chosen at
+        construction from the module's type and native path, and aliases bind
+        after the children exist, so a target still wrapped by the base `Envoy`
+        is re-resolved here against its alias path and adopts what that picks.
+        A class already chosen stands.
         """
         if not self._rename:
             return
@@ -340,6 +350,13 @@ class Envoy:
 
                 object.__setattr__(self, alias, target)
                 self._aliases[alias] = path
+                # Swapping `__class__` is sound: an Envoy subclass adds
+                # descriptors, not state, and the interleaver keys on the
+                # module. Resolving to the base class again is a no-op.
+                if type(target) is Envoy:
+                    target.__class__ = self._resolve_envoy_class(
+                        target._module, f"{self.path}.{alias}"
+                    )
 
     def _add_envoy(self, name: str, module: torch.nn.Module) -> Envoy:
         # Register a (possibly new) module on self._module, then mirror it.
@@ -355,6 +372,10 @@ class Envoy:
         first) or a string dotted path-suffix (``"attn"``, ``"transformer.h"``).
         Falls back to the base [`Envoy`][nnsight.intervention.envoy.Envoy] when nothing matches — so a model can
         give, e.g., its attention modules a subclass exposing a ``.heads`` eproperty.
+
+        Called with the native path as each child is built, and again with the
+        alias path for each ``rename`` alias that binds to a still-base envoy
+        (see `_bind_aliases`), so a string key may name a module by either.
         """
         mapping = self._envoys
         if mapping is None:
