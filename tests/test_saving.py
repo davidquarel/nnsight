@@ -1,3 +1,5 @@
+import subprocess
+import sys
 import threading
 
 import pytest
@@ -139,6 +141,23 @@ class TestSaveMethod:
             f = nnsight.save(envoy.fc2.output)   # function form
         assert torch.allclose(m, model.fc1(x))
         assert torch.allclose(f, model(x))
+
+    def test_mount_leaves_anyio_importable(self):
+        # anyio's TypedAttributeSet rejects any public attribute without an
+        # annotation, and the mount puts `save` on every class, so each subclass
+        # has to exist before nnsight mounts. Only a fresh interpreter imports
+        # anyio after nnsight; this one already has both loaded.
+        pytest.importorskip("anyio")
+        code = (
+            "import nnsight\n"
+            "import anyio.streams.file\n"
+            "import anyio.streams.tls\n"
+            "from anyio.abc import SocketAttribute\n"
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code], capture_output=True, text=True, timeout=300
+        )
+        assert result.returncode == 0, result.stderr
 
 
 class TestThreadSafety:
