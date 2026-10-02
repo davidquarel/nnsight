@@ -11,9 +11,14 @@ import transformers  # noqa: F401
 # transformers reaches anyio via huggingface_hub -> httpcore, but only on some
 # installs, and other stacks reach it by their own route (vLLM via openai). Warm it
 # directly rather than through a chain that may not pull it; it isn't a dependency
-# of nnsight, so it may legitimately be absent.
+# of nnsight, so it may legitimately be absent. Import the modules that define the
+# TypedAttributeSet subclasses, not just the package: `import anyio` defines none
+# of them on anyio >= 4.15, which loads its submodules lazily, and never defined
+# FileStreamAttribute.
 try:
-    import anyio  # noqa: F401
+    import anyio.streams.file  # noqa: F401
+    import anyio.streams.tls  # noqa: F401
+    from anyio.abc import SocketAttribute as _SocketAttribute  # noqa: F401
 except ImportError:
     pass
 
